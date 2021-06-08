@@ -14,20 +14,28 @@ import deepxde as dde
 # from deepxde.backend import tf
 from plotting_outcome import plot_losshistory, plot_beststate, plot_observed_predict
 
-def gen_traindata(file_name, add_noise = False, noise = 0.0, v_std = 0.1):
+def gen_traindata(file_name, dim, noise = 0.0, v_std = 0.1):
     
     data = scipy.io.loadmat(file_name)
-    t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
-    X, T = np.meshgrid(x, t)
+    if dim == 1:
+        t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
+        X, T = np.meshgrid(x, t)
+    elif dim == 2:
+       t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"],data["Vsav"], data["Wsav"]
+       X, T, Y = np.meshgrid(x,t,y)
+       Y = np.reshape(Y, (-1, 1))
+    else:
+        raise ValueError('The entered dimesion value has to be either 1 or 2')
     X = np.reshape(X, (-1, 1))
     T = np.reshape(T, (-1, 1))
     V = np.reshape(Vsav, (-1, 1))
     W = np.reshape(Wsav, (-1, 1))    
     # With noise
-    if add_noise:
-        # revisit the std value
+    if noise:
         V = V + noise*v_std*np.random.randn(V.shape[0], V.shape[1])
-    return np.hstack((X, T)), V, W
+    if dim == 1:
+        return np.hstack((X, T)), V, W
+    return np.hstack((X, Y, T)), V, W
 
 def pde(x, y):
     
@@ -66,18 +74,16 @@ def geometry_time(dim, observe_x):
     return (geom, timedomain, geomtime)
 
 def main(args):
+    
     # Generate Data 
-    add_noise = False
-    if args.noise:
-        add_noise = True
     noise = args.noise
     file_name = args.file_name
-    observe_x, V, W = gen_traindata(file_name, add_noise, noise)
+    observe_x, V, W = gen_traindata(file_name, args.dim, noise)
         
     # Geometry and Time domains
     geom, timedomain, geomtime = geometry_time(args.dim, observe_x)
     
-    # Change boundary conditions
+    # Define boundary conditions
     bc_a = dde.NeumannBC(geomtime, lambda x:  np.zeros((len(x), 1)), lambda _, on_boundary: on_boundary, component=0)
         
     # Model observed data
@@ -90,10 +96,11 @@ def main(args):
         
     data = dde.data.TimePDE(geomtime, pde, input_data, num_domain=10000, num_boundary=1400, anchors=observe_x,
         train_distribution="uniform", num_test=4000)
+    
     # Define Network
-    if args.dim ==1:
+    if args.dim == 1:
         net = dde.maps.FNN([2] + [20] * 3 + [2], "tanh", "Glorot uniform")
-    elif args.dim ==2:
+    elif args.dim == 2:
         net = dde.maps.FNN([3] + [20] * 3 + [2], "tanh", "Glorot uniform")
     model = dde.Model(data, net)
     model.compile("adam", lr=0.001)
@@ -120,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--file-name', dest='file_name', required = True, type = str, help='File name for input data')
     parser.add_argument('-d', '--dimension', dest='dim', required = True, type = int, default = 2, help='Model dimension. Needs to match the input data')
     parser.add_argument('-n', '--noise', dest='noise', required = False, default = 0.0, type = float, help='Add noise to the data')
-    parser.add_argument('-w', '--w-input',   dest='w_input',   action='store_true', help='Add W to the model input data')
+    parser.add_argument('-w', '--w-input',   dest='w_input', action='store_true', help='Add W to the model input data')
     args = parser.parse_args()
 
     train_state, y_true, y_pred, f=main(args)
