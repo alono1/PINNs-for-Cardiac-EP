@@ -37,7 +37,7 @@ def gen_traindata(file_name, dim, noise = 0.0, v_std = 0.1):
         return np.hstack((X, T)), V, W
     return np.hstack((X, Y, T)), V, W
 
-def pde(x, y):
+def pde_1D(x, y):
     
     V, W = y[:, 0:1], y[:, 1:2]
     dv_dt = dde.grad.jacobian(y, x, i=0, j=1)
@@ -51,6 +51,24 @@ def pde(x, y):
     D = 0.1
     epsilon = 0.002
     eq_a = dv_dt -  D*dv_dxx + k*V*(V-a)*(V-1) +W*V 
+    eq_b = dw_dt -  (epsilon + (mu_1*W)/(mu_2+V))*(-W -k*V*(V-b-1))
+    return [eq_a, eq_b]
+
+def pde_2D(x, y):
+    
+    V, W = y[:, 0:1], y[:, 1:2]
+    dv_dt = dde.grad.jacobian(y, x, i=0, j=2)
+    dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
+    dv_dyy = dde.grad.hessian(y, x, component=0, i=1, j=1)
+    dw_dt = dde.grad.jacobian(y, x, i=1, j=2)
+    a = 0.01
+    b = 0.15
+    k = 8
+    mu_1 = 0.2
+    mu_2 = 0.3
+    D = 0.1
+    epsilon = 0.002
+    eq_a = dv_dt -  D*(dv_dxx+dv_dyy) + k*V*(V-a)*(V-1) +W*V 
     eq_b = dw_dt -  (epsilon + (mu_1*W)/(mu_2+V))*(-W -k*V*(V-b-1))
     return [eq_a, eq_b]
 
@@ -93,15 +111,19 @@ def main(args):
     if args.w_input:
         observe_y2 = dde.PointSetBC(observe_x, W, component=1)
         input_data = [bc_a, observe_y1, observe_y2]
-        
-    data = dde.data.TimePDE(geomtime, pde, input_data, num_domain=10000, num_boundary=1400, anchors=observe_x,
-        train_distribution="uniform", num_test=4000)
     
-    # Define Network
     if args.dim == 1:
+        pde = pde_1D
+        # Define the Network
         net = dde.maps.FNN([2] + [20] * 3 + [2], "tanh", "Glorot uniform")
     elif args.dim == 2:
+        pde = pde_2D
+        # Define the Network
         net = dde.maps.FNN([3] + [20] * 3 + [2], "tanh", "Glorot uniform")
+        
+    data = dde.data.TimePDE(geomtime, pde, input_data, num_domain=10000, num_boundary=1400, anchors=observe_x,
+                train_distribution="uniform", num_test=4000)    
+    
     model = dde.Model(data, net)
     model.compile("adam", lr=0.001)
     
