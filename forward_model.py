@@ -10,12 +10,12 @@ import sys
 sys.path.append('D:\\Alon\\My Studies\\M.SC Artificial Intelligence\\Individual Project')
 
 import numpy as np
-import deepxde as dde
+import deepxde as dde 
+# dde version 0.11
 # from deepxde.backend import tf
 from plotting_outcome import plot_losshistory, plot_beststate, plot_observed_predict
 
 # Network Parameters
-
 num_hidden_layer_1d = 3 # number of hidden layers for NN (1D)
 hidden_layer_size_1d = 20 # size of each hidden layers (1D)
 num_hidden_layer_2d = 4 # number of hidden layers for NN (2D)
@@ -28,7 +28,6 @@ epochs = 40000 # number of epochs for training
 lr = 0.001 # learning rate
 
 # PDE Parameters
-
 a = 0.01
 b = 0.15
 k = 8
@@ -38,7 +37,6 @@ D = 0.1
 epsilon = 0.002
 
 # Geometry Parameters
-
 min_x = 0.1
 max_x = 10            
 min_y = 0.1
@@ -90,7 +88,6 @@ def pde_2D(x, y):
     eq_b = dw_dt -  (epsilon + (mu_1*W)/(mu_2+V))*(-W -k*V*(V-b-1))
     return [eq_a, eq_b]
 
-
 def geometry_time(dim, observe_x):
     if dim == 1:
         geom = dde.geometry.Interval(min_x, 2*max_x)
@@ -106,6 +103,7 @@ def geometry_time(dim, observe_x):
 
 def boundary_func_2d(x, on_boundary):
         return on_boundary and ~(x[0:2] == [min_x,min_y]).all() and  ~(x[0:2] == [min_x,max_y]).all() and ~(x[0:2] == [max_x,min_y]).all()  and  ~(x[0:2] == [max_x,max_y]).all() 
+
 
 
 def main(args):
@@ -141,19 +139,13 @@ def main(args):
         # Select relevant PDE
         pde = pde_2D
         # Define the Network
-        net = dde.maps.FNN([3] + [hidden_layer_size_2d] * num_hidden_layer_2d + [2], "tanh", "Glorot uniform")
-        
+        net = dde.maps.FNN([3] + [hidden_layer_size_2d] * num_hidden_layer_2d + [2], "tanh", "Glorot uniform") 
     data = dde.data.TimePDE(geomtime, pde, input_data,
                             num_domain = num_domain, 
                             num_boundary=num_boundary, 
                             anchors=observe_x,
                             train_distribution="uniform",
                             num_test=num_test)    
-    
-
-    print(data.train_points()[-1])
-    input("say anything")
-    
     model = dde.Model(data, net)
     model.compile("adam", lr=lr)
         
