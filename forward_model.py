@@ -12,7 +12,7 @@ sys.path.append('D:\\Alon\\My Studies\\M.SC Artificial Intelligence\\Individual 
 import numpy as np
 import deepxde as dde 
 # dde version 0.11
-# from deepxde.backend import tf
+
 from plotting_outcome import plot_losshistory, plot_beststate, plot_observed_predict
 
 # Network Parameters
