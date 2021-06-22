@@ -83,7 +83,7 @@ def gen_data(file_name, dim, add_noise):
         t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
         X, T = np.meshgrid(x, t)
     elif dim == 2:
-       t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"],data["Vsav"], data["Wsav"]
+       t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"], data["Vsav"], data["Wsav"]
        X, T, Y = np.meshgrid(x,t,y)
        Y = np.reshape(Y, (-1, 1))
     else:
@@ -145,8 +145,10 @@ def main(args):
     add_noise = args.noise
     file_name = args.file_name
     observe_x, V, W = gen_data(file_name, args.dim, add_noise)
+    
     # Split data to train and test
     observe_train, observe_test, V_train, V_test, W_train, W_test = train_test_split(observe_x,V,W,test_size=test_size)
+    
     # Define Initial Conditions
     T_ic = observe_train[:,-1].reshape(-1,1)
     idx_init = np.where(np.isclose(T_ic,1))[0]
@@ -166,7 +168,7 @@ def main(args):
     # Model observed data
     observe_v = dde.PointSetBC(observe_train, V_train, component=0)
     input_data = [bc_a, ic1, observe_v]
-    # If include W in input
+    # If W required as input
     if args.w_input:
         observe_w = dde.PointSetBC(observe_train, W_train, component=1)
         input_data = [bc_a, ic1, observe_v, observe_w]
@@ -202,21 +204,22 @@ def main(args):
         init_loss = max(losshistory.loss_train[num_itr-1])
     
     # Train Network
+    out_path = dir_path + args.model_folder_name
     if not args.inverse:
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = dir_path + args.model_folder_name)
+        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path)
     else:
         variable = dde.callbacks.VariableValue(params, period=1000, filename="variables.dat")    
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = dir_path + args.model_folder_name, callbacks = [variable])
+        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks = [variable])
     dde.saveplot(losshistory, train_state, issave=True, isplot=True)
     
     # Plot
     model_pred = model.predict(observe_test)
     v_pred = model_pred[:,0:1]
-    v_rmse = np.sqrt(np.square(v_pred - V_test).mean())
-    print("v pred values: ", V_pred)
+    rmse_v = np.sqrt(np.square(v_pred - V_test).mean())
+    print("v pred values: ", v_pred)
     print("v test values: ", V_test)
-    print("V rMSE test:", v_rmse)
-    return train_state, V_pred, V_test 
+    print("V rMSE test:", rmse_v)
+    return train_state, v_pred, V_test 
 
 # Run main code
-train_state, V_pred, V_test = main(args)
+train_state, v_pred, V_test = main(args)
