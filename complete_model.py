@@ -60,7 +60,8 @@ def parse_inverse(a,b,D,param):
     params = []
     if not param:
         return a,b,D
-    # If inverse: the tf.variables are initialized with a positive scalar, relatively close to their true values
+    # If inverse: 
+    # The tf.variables are initialized with a positive scalar, relatively close to their true values
     if 'a' in param:
         a = tf.math.exp(tf.Variable(-3.92))
         params.append(a)
@@ -72,7 +73,6 @@ def parse_inverse(a,b,D,param):
         params.append(D)
     return a ,b , D, params
 
-# If inverse problem requested
 a, b, D, params = parse_inverse(a,b,D,args.inverse)
     
 def gen_data(file_name, dim, add_noise):
