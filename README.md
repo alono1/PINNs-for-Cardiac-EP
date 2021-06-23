@@ -1,6 +1,6 @@
 # PINNs-for-Cardiac-EP
 
-Environment:\n
+Environment:
 Python 3.8
 Tensorflow-gpu
 DeppXDE 0.11
