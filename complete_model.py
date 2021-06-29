@@ -37,16 +37,17 @@ num_test = 1000 # number of testing points within the domain
 epochs = 40000 # number of epochs for training
 lr = 0.001 # learning rate
 noise = 0.1 # noise factor
-test_size = 0.2 # precentage of testing data out of the whole data file
+loss_limit = 10 # upper limit to the initialized loss
+test_size = 0.2 # precentage of testing data
 
 # PDE Parameters
+a = 0.01
+b = 0.15
+D = 0.1
 k = 8
 mu_1 = 0.2
 mu_2 = 0.3
 epsilon = 0.002
-a = 0.01
-b = 0.15
-D = 0.1
 
 # Geometry Parameters
 min_x = 0.1
@@ -56,12 +57,12 @@ max_y = 10
 min_t = 1
 max_t = 70
 
-def parse_inverse(a,b,D,param):
+def params_to_inverse(a,b,D,param):
     params = []
     if not param:
-        return a,b,D
+        return a, b, D, params
     # If inverse: 
-    # The tf.variables are initialized with a positive scalar, relatively close to their true values
+    # The tf.variables are initialized with a positive scalar, relatively close to their ground truth values
     if 'a' in param:
         a = tf.math.exp(tf.Variable(-3.92))
         params.append(a)
@@ -73,11 +74,10 @@ def parse_inverse(a,b,D,param):
         params.append(D)
     return a ,b , D, params
 
-a, b, D, params = parse_inverse(a,b,D,args.inverse)
-    
+a, b, D, params = params_to_inverse(a,b,D,args.inverse)
+
 def gen_data(file_name, dim, add_noise):
     
-    v_std = 0.1
     data = scipy.io.loadmat(file_name)
     if dim == 1:
         t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
@@ -87,14 +87,14 @@ def gen_data(file_name, dim, add_noise):
        X, T, Y = np.meshgrid(x,t,y)
        Y = np.reshape(Y, (-1, 1))
     else:
-        raise ValueError('The entered dimesion value has to be either 1 or 2')
+        raise ValueError('Dimesion value argument has to be either 1 or 2')
     X = np.reshape(X, (-1, 1))
     T = np.reshape(T, (-1, 1))
     V = np.reshape(Vsav, (-1, 1))
     W = np.reshape(Wsav, (-1, 1))    
     # With noise
     if add_noise:
-        V = V + noise*v_std*np.random.randn(V.shape[0], V.shape[1])
+        V = V + noise*np.random.randn(V.shape[0], V.shape[1])
     if dim == 1:     
         return np.hstack((X, T)), V, W
     return np.hstack((X, Y, T)), V, W
@@ -105,7 +105,7 @@ def pde_1D(x, y):
     dv_dt = dde.grad.jacobian(y, x, i=0, j=1)
     dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
     dw_dt = dde.grad.jacobian(y, x, i=1, j=1)
-    # PDE Equations
+    # Coupled PDE+ODE Equations
     eq_a = dv_dt -  D*dv_dxx + k*V*(V-a)*(V-1) +W*V 
     eq_b = dw_dt -  (epsilon + (mu_1*W)/(mu_2+V))*(-W -k*V*(V-b-1))
     return [eq_a, eq_b]
@@ -117,11 +117,37 @@ def pde_2D(x, y):
     dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
     dv_dyy = dde.grad.hessian(y, x, component=0, i=1, j=1)
     dw_dt = dde.grad.jacobian(y, x, i=1, j=2)
-    # PDE Equations
+    # Coupled PDE+ODE Equations
     eq_a = dv_dt -  D*(dv_dxx + dv_dyy) + k*V*(V-a)*(V-1) +W*V 
     eq_b = dw_dt -  (epsilon + (mu_1*W)/(mu_2+V))*(-W -k*V*(V-b-1))
     return [eq_a, eq_b]
 
+def pde_1D_2_cycle(x, y):
+    
+    V, W = y[:, 0:1], y[:, 1:2]
+    dv_dt = dde.grad.jacobian(y, x, i=0, j=1)
+    dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
+    dw_dt = dde.grad.jacobian(y, x, i=1, j=1)
+    
+    x_space,t = x[:, 0:1],x[:, 1:2]
+    t_stim_1 = tf.equal(t, 0)
+    t_stim_2 = tf.equal(t, max_t)
+    
+    x_stim = tf.less_equal(x_space, 5*0.1)
+    first_cond_stim = tf.logical_and(t_stim_1, x_stim)
+    second_cond_stim = tf.logical_and(t_stim_2, x_stim)
+    
+    I_stim = tf.ones_like(x_space)*0.1
+    I_not_stim = tf.ones_like(x_space)*0
+    Istim = tf.where(tf.logical_or(first_cond_stim,second_cond_stim),I_stim,I_not_stim)
+    # Coupled PDE+ODE Equations
+    eq_a = dv_dt -  D*dv_dxx + k*V*(V-a)*(V-1) +W*V -Istim
+    eq_b = dw_dt -  (epsilon + (mu_1*W)/(mu_2+V))*(-W -k*V*(V-b-1))
+    return [eq_a, eq_b]
+
+def boundary_func_2d(x, on_boundary):
+        return on_boundary and ~(x[0:2] == [min_x,min_y]).all() and  ~(x[0:2] == [min_x,max_y]).all() and ~(x[0:2] == [max_x,min_y]).all()  and  ~(x[0:2] == [max_x,max_y]).all() 
+   
 def geometry_time(dim, observe_x):
     if dim == 1:
         geom = dde.geometry.Interval(min_x, 2*max_x)
@@ -132,11 +158,8 @@ def geometry_time(dim, observe_x):
         timedomain = dde.geometry.TimeDomain(min_t, max_t)
         geomtime = dde.geometry.GeometryXTime(geom, timedomain)
     else:
-        raise ValueError('The entered dimesion value has to be either 1 or 2')
+        raise ValueError('Dimesion value argument has to be either 1 or 2')
     return geomtime
-
-def boundary_func_2d(x, on_boundary):
-        return on_boundary and ~(x[0:2] == [min_x,min_y]).all() and  ~(x[0:2] == [min_x,max_y]).all() and ~(x[0:2] == [max_x,min_y]).all()  and  ~(x[0:2] == [max_x,max_y]).all() 
 
 
 def main(args):
@@ -187,16 +210,15 @@ def main(args):
                             num_domain = num_domain, 
                             num_boundary=num_boundary, 
                             anchors=observe_train,
-                            # train_distribution="uniform",
                             num_test=num_test)    
     model = dde.Model(data, net)
     model.compile("adam", lr=lr)
     
-    # Stabalize the initialization process
+    # Stabalize initialization process
     losshistory, _ = model.train(epochs=1)
     num_itr = len(losshistory.loss_train)
     init_loss = max(losshistory.loss_train[num_itr-1])
-    while init_loss>1 or np.isnan(init_loss):
+    while init_loss>loss_limit or np.isnan(init_loss):
         model = dde.Model(data, net)
         model.compile("adam", lr=lr)
         losshistory, _ = model.train(epochs=1)
@@ -208,18 +230,17 @@ def main(args):
     if not args.inverse:
         losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path)
     else:
-        variable = dde.callbacks.VariableValue(params, period=1000, filename="variables.dat")    
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks = [variable])
+        variables_file = "variables_" + args.inverse + ".dat"
+        variable = dde.callbacks.VariableValue(params, period=1000, filename=variables_file)    
+        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
     dde.saveplot(losshistory, train_state, issave=True, isplot=True)
     
     # Plot
     model_pred = model.predict(observe_test)
     v_pred = model_pred[:,0:1]
     rmse_v = np.sqrt(np.square(v_pred - V_test).mean())
-    print("v pred values: ", v_pred)
-    print("v test values: ", V_test)
     print("V rMSE test:", rmse_v)
     return train_state, v_pred, V_test 
 
 # Run main code
-train_state, v_pred, V_test = main(args)
+train_state, V_pred, V_test = main(args)
