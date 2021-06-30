@@ -25,7 +25,6 @@ def plot_1d_cell(v, observe_x, model, fig_name):
     plt.plot(t_axis, v_test, c='r', label='observed')
     plt.plot(t_axis, v_predict, c='b', label='predicted')
     plt.legend(loc='upper right')
-    # plt.legend(loc='best')
     plt.xlabel('t')
     plt.ylabel('V')
     plt.savefig(fig_name + "_cell_plot.png")
@@ -47,7 +46,7 @@ def plot_1d_array(v, observe_x, model, fig_name):
     
     plt.plot(x_ax, v_test, c='r', label='observed')
     plt.plot(x_ax, v_predict, c='b', label='predicted')
-    plt.legend(loc='upper right')
+    plt.legend(loc='upper left')
     # plt.legend(loc='best')
     plt.xlabel('x')
     plt.ylabel('V')
