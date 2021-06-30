@@ -9,11 +9,10 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path)
 import argparse
 import numpy as np
-import deepxde as dde 
-# dde version 0.11
+import deepxde as dde # version 0.11
 from deepxde.backend import tf
-# from plotting_outcome import plot_losshistory, plot_beststate, plot_observed_predict
-import create_plots
+from create_plots import plot_1d
+
 # parse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -33,13 +32,13 @@ num_hidden_layer_2d = 4 # number of hidden layers for NN (2D)
 hidden_layer_size_2d = 36 # size of each hidden layers (2D)
 num_domain = 10000 # number of training points within the domain
 num_boundary = 1000 # number of training boundary condition points on the geometry boundary
-num_initial = 0 # number of training initial condition points
 num_test = 1000 # number of testing points within the domain
-epochs = 60000 # number of epochs for training
+epochs = 50000 # number of epochs for training
 lr = 0.001 # learning rate
 noise = 0.1 # noise factor
 loss_limit = 10 # upper limit to the initialized loss
 test_size = 0.2 # precentage of testing data
+MAX_INIT = 10 # maximum number of times allowed to initialize the model 
 
 # PDE Parameters
 a = 0.01
@@ -144,7 +143,7 @@ def pde_1D_2_cycle(x, y):
     return [eq_a, eq_b]
 
 def boundary_func_2d(x, on_boundary):
-        return on_boundary and ~(x[0:2] == [min_x,min_y]).all() and  ~(x[0:2] == [min_x,max_y]).all() and ~(x[0:2] == [max_x,min_y]).all()  and  ~(x[0:2] == [max_x,max_y]).all() 
+        return on_boundary and ~(x[0:2]==[min_x,min_y]).all() and  ~(x[0:2]==[min_x,max_y]).all() and ~(x[0:2]==[max_x,min_y]).all()  and  ~(x[0:2]==[max_x,max_y]).all() 
    
 def geometry_time(dim, observe_x):
     if dim == 1:
@@ -219,13 +218,17 @@ def main(args):
     losshistory, _ = model.train(epochs=1)
     num_itr = len(losshistory.loss_train)
     init_loss = max(losshistory.loss_train[num_itr-1])
+    num_init = 0
     while init_loss>loss_limit or np.isnan(init_loss):
+        num_init += 1
         model = dde.Model(data, net)
         model.compile("adam", lr=lr)
         losshistory, _ = model.train(epochs=1)
         num_itr = len(losshistory.loss_train)
         init_loss = max(losshistory.loss_train[num_itr-1])
-    
+        if num_init > MAX_INIT:
+            exit()
+            
     # Train Network
     out_path = dir_path + args.model_folder_name
     if not args.inverse:
@@ -234,7 +237,7 @@ def main(args):
         variables_file = "variables_" + args.inverse + ".dat"
         variable = dde.callbacks.VariableValue(params, period=1000, filename=variables_file)    
         losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
-    dde.saveplot(losshistory, train_state, issave=True, isplot=True)
+    # dde.saveplot(losshistory, train_state, issave=True, isplot=True)
     
     # Compute rMSE
     model_pred = model.predict(observe_test)
@@ -244,7 +247,7 @@ def main(args):
     
     # Plot   
     if args.plot and args.dim == 1:
-        create_plots.plot_1d(V, observe_x, model, args.model_folder_name)
+        plot_1d(V, observe_x, model, args.model_folder_name)
     return train_state, v_pred, v_test 
 
 # Run main code
