@@ -13,7 +13,7 @@ import deepxde as dde
 # dde version 0.11
 from deepxde.backend import tf
 # from plotting_outcome import plot_losshistory, plot_beststate, plot_observed_predict
-
+import create_plots
 # parse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -23,6 +23,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--noise', dest='noise', action='store_true', help='Add noise to the data')
     parser.add_argument('-w', '--w-input', dest='w_input', action='store_true', help='Add W to the model input data')
     parser.add_argument('-v', '--inverse', dest='inverse', required = False, type = str, help='Solve the inverse problem, specify variables to predict (e.g. a / ad / abd')
+    parser.add_argument('-p', '--plot', dest='plot', required = False, action='store_true', help='Create and save plots')
     args = parser.parse_args()
 
 # Network Parameters
@@ -34,7 +35,7 @@ num_domain = 10000 # number of training points within the domain
 num_boundary = 1000 # number of training boundary condition points on the geometry boundary
 num_initial = 0 # number of training initial condition points
 num_test = 1000 # number of testing points within the domain
-epochs = 40000 # number of epochs for training
+epochs = 60000 # number of epochs for training
 lr = 0.001 # learning rate
 noise = 0.1 # noise factor
 loss_limit = 10 # upper limit to the initialized loss
@@ -76,7 +77,7 @@ def params_to_inverse(a,b,D,param):
 
 a, b, D, params = params_to_inverse(a,b,D,args.inverse)
 
-def gen_data(file_name, dim, add_noise):
+def gen_data(file_name, dim):
     
     data = scipy.io.loadmat(file_name)
     if dim == 1:
@@ -85,16 +86,13 @@ def gen_data(file_name, dim, add_noise):
     elif dim == 2:
        t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"], data["Vsav"], data["Wsav"]
        X, T, Y = np.meshgrid(x,t,y)
-       Y = np.reshape(Y, (-1, 1))
+       Y = Y.reshape(-1, 1)
     else:
         raise ValueError('Dimesion value argument has to be either 1 or 2')
-    X = np.reshape(X, (-1, 1))
-    T = np.reshape(T, (-1, 1))
-    V = np.reshape(Vsav, (-1, 1))
-    W = np.reshape(Wsav, (-1, 1))    
-    # With noise
-    if add_noise:
-        V = V + noise*np.random.randn(V.shape[0], V.shape[1])
+    X = X.reshape(-1, 1)
+    T = T.reshape(-1, 1)
+    V = Vsav.reshape(-1, 1)
+    W = Wsav.reshape(-1, 1)    
     if dim == 1:     
         return np.hstack((X, T)), V, W
     return np.hstack((X, Y, T)), V, W
@@ -165,19 +163,22 @@ def geometry_time(dim, observe_x):
 def main(args):
     
     # Generate Data 
-    add_noise = args.noise
     file_name = args.file_name
-    observe_x, V, W = gen_data(file_name, args.dim, add_noise)
+    observe_x, V, W = gen_data(file_name, args.dim)
     
     # Split data to train and test
-    observe_train, observe_test, V_train, V_test, W_train, W_test = train_test_split(observe_x,V,W,test_size=test_size)
+    observe_train, observe_test, v_train, v_test, w_train, w_test = train_test_split(observe_x,V,W,test_size=test_size)
     
+    # With added noise to training data
+    if args.noise:
+        v_train = v_train + noise*np.random.randn(v_train.shape[0], v_train.shape[1])
+
     # Define Initial Conditions
     T_ic = observe_train[:,-1].reshape(-1,1)
     idx_init = np.where(np.isclose(T_ic,1))[0]
-    V_init = V_train[idx_init]
+    V_init = v_train[idx_init]
     observe_init = observe_train[idx_init]
-    ic1 = dde.PointSetBC(observe_init,V_init,component=0)
+    ic_1 = dde.PointSetBC(observe_init,V_init,component=0)
     
     # Geometry and Time domains
     geomtime = geometry_time(args.dim, observe_x)
@@ -189,12 +190,12 @@ def main(args):
         bc_a = dde.NeumannBC(geomtime, lambda x:  np.zeros((len(x), 1)), boundary_func_2d, component=0)
     
     # Model observed data
-    observe_v = dde.PointSetBC(observe_train, V_train, component=0)
-    input_data = [bc_a, ic1, observe_v]
+    observe_v = dde.PointSetBC(observe_train, v_train, component=0)
+    input_data = [bc_a, ic_1, observe_v]
     # If W required as input
     if args.w_input:
-        observe_w = dde.PointSetBC(observe_train, W_train, component=1)
-        input_data = [bc_a, ic1, observe_v, observe_w]
+        observe_w = dde.PointSetBC(observe_train, w_train, component=1)
+        input_data = [bc_a, ic_1, observe_v, observe_w]
     
     if args.dim == 1:
         # Select relevant PDE
@@ -235,12 +236,16 @@ def main(args):
         losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
     dde.saveplot(losshistory, train_state, issave=True, isplot=True)
     
-    # Plot
+    # Compute rMSE
     model_pred = model.predict(observe_test)
     v_pred = model_pred[:,0:1]
-    rmse_v = np.sqrt(np.square(v_pred - V_test).mean())
+    rmse_v = np.sqrt(np.square(v_pred - v_test).mean())
     print("V rMSE test:", rmse_v)
-    return train_state, v_pred, V_test 
+    
+    # Plot   
+    if args.plot and args.dim == 1:
+        create_plots.plot_1d(V, observe_x, model, args.model_folder_name)
+    return train_state, v_pred, v_test 
 
 # Run main code
-train_state, V_pred, V_test = main(args)
+train_state, v_pred, v_test = main(args)
