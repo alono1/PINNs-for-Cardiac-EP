@@ -29,16 +29,18 @@ if __name__ == "__main__":
 num_hidden_layer_1d = 3 # number of hidden layers for NN (1D)
 hidden_layer_size_1d = 20 # size of each hidden layers (1D)
 num_hidden_layer_2d = 4 # number of hidden layers for NN (2D)
-hidden_layer_size_2d = 36 # size of each hidden layers (2D)
+hidden_layer_size_2d = 32 # size of each hidden layers (2D)
 num_domain = 10000 # number of training points within the domain
 num_boundary = 1000 # number of training boundary condition points on the geometry boundary
 num_test = 1000 # number of testing points within the domain
+
+# Training Parameters
+MAX_INIT = 10 # maximum number of times allowed to initialize the model
+MAX_LOSS = 10 # upper limit to the initialized loss
 epochs = 50000 # number of epochs for training
 lr = 0.001 # learning rate
 noise = 0.1 # noise factor
-loss_limit = 10 # upper limit to the initialized loss
 test_size = 0.2 # precentage of testing data
-MAX_INIT = 10 # maximum number of times allowed to initialize the model 
 
 # PDE Parameters
 a = 0.01
@@ -126,11 +128,11 @@ def pde_1D_2_cycle(x, y):
     dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
     dw_dt = dde.grad.jacobian(y, x, i=1, j=1)
     
-    x_space,t = x[:, 0:1],x[:, 1:2]
-    t_stim_1 = tf.equal(t, 0)
-    t_stim_2 = tf.equal(t, max_t)
-    
+    x_space,t_space = x[:, 0:1],x[:, 1:2]
+    t_stim_1 = tf.equal(t_space, 0)
+    t_stim_2 = tf.equal(t_space, int(max_t/2))
     x_stim = tf.less_equal(x_space, 5*0.1)
+    
     first_cond_stim = tf.logical_and(t_stim_1, x_stim)
     second_cond_stim = tf.logical_and(t_stim_2, x_stim)
     
@@ -163,12 +165,12 @@ def main(args):
     
     # Generate Data 
     file_name = args.file_name
-    observe_x, V, W = gen_data(file_name, args.dim)
+    observe_x, V, W = gen_data(file_name, args.dim)  
     
     # Split data to train and test
     observe_train, observe_test, v_train, v_test, w_train, w_test = train_test_split(observe_x,V,W,test_size=test_size)
     
-    # With added noise to training data
+    # Add noise to training data if needed
     if args.noise:
         v_train = v_train + noise*np.random.randn(v_train.shape[0], v_train.shape[1])
 
@@ -219,7 +221,7 @@ def main(args):
     num_itr = len(losshistory.loss_train)
     init_loss = max(losshistory.loss_train[num_itr-1])
     num_init = 0
-    while init_loss>loss_limit or np.isnan(init_loss):
+    while init_loss>MAX_LOSS or np.isnan(init_loss):
         num_init += 1
         model = dde.Model(data, net)
         model.compile("adam", lr=lr)
@@ -243,6 +245,7 @@ def main(args):
     model_pred = model.predict(observe_test)
     v_pred = model_pred[:,0:1]
     rmse_v = np.sqrt(np.square(v_pred - v_test).mean())
+    print('--------------------------')
     print("V rMSE test:", rmse_v)
     
     # Plot   
