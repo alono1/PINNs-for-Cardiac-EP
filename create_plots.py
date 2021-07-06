@@ -11,26 +11,30 @@ def plot_1d(data_list, model, fig_name):
     
 def plot_1d_cell(data_list, model, fig_name):
     
-    # Unpack data
+    ## Unpack data
     observe_x, observe_train, v = data_list[0], data_list[1], data_list[2]
     
-    # Pick a random cell to show
+    ## Pick a random cell to show
     obs_x = 15.0
     
-    # Get data for cell
+    ## Get data for cell
     idx = [i for i,ix in enumerate(observe_x) if observe_x[i][0]==obs_x]
     observe_geomtime = observe_x[idx]
     v_observe = v[idx]
     v_predict = model.predict(observe_geomtime)[:,0:1]
     t_axis = observe_geomtime[:,1]
     
-    # Get data for points used in training process
+    ## Get data for points used in training process
     idx_train = [i for i,ix in enumerate(observe_train) if observe_train[i][0]==obs_x]
     t_markers = ((observe_train[idx_train])[:,1]).astype(int) - 1
     
-    # create and save plot
+    ## create and save plot
     plt.figure()
-    plt.plot(t_axis, v_observe, c='b', label='observed', marker='x', markevery=t_markers, ms=5)
+    ## If there are any trained data points for the current cell 
+    if len(t_markers):
+        plt.plot(t_axis, v_observe, c='b', label='observed', marker='x', markevery=t_markers, ms=5)
+    else:
+        plt.plot(t_axis, v_observe, c='b', label='observed')
     plt.plot(t_axis, v_predict, c='r', label='predicted')
     plt.legend(loc='upper right')
     plt.xlabel('t')
@@ -41,26 +45,30 @@ def plot_1d_cell(data_list, model, fig_name):
 
 def plot_1d_array(data_list, model, fig_name):
     
-    # Unpack data
+    ## Unpack data
     observe_x, observe_train, v = data_list[0], data_list[1], data_list[2]
     
-    # Pick a random point in time to show
+    ## Pick a random point in time to show
     obs_t = 36.0
     
-    # Get all array data for chosen time 
+    ## Get all array data for chosen time 
     idx = [i for i,ix in enumerate(observe_x) if observe_x[i][1]==obs_t]
     observe_geomtime = observe_x[idx]
     v_observe = v[idx]
     v_predict = model.predict(observe_geomtime)[:,0:1]
     x_ax = observe_geomtime[:,0]
     
-    # Get data for points used in training process
+    ## Get data for points used in training process
     idx_train = [i for i,ix in enumerate(observe_train) if observe_train[i][1]==obs_t]
-    x_train = (((observe_train[idx_train])[:,0])*10).astype(int) -1
+    x_markers = (((observe_train[idx_train])[:,0])*10).astype(int) -1
 
-    # create and save plot
+    ## create and save plot
     plt.figure()
-    plt.plot(x_ax, v_observe, c='b', label='observed',  marker='x', markevery=x_train, ms=5)
+    ## If there are any trained data points for the current time step
+    if len(x_markers):
+        plt.plot(x_ax, v_observe, c='b', label='observed',  marker='x', markevery=x_markers, ms=5)
+    else:
+        plt.plot(x_ax, v_observe, c='b', label='observed')
     plt.plot(x_ax, v_predict, c='r', label='predicted')
     plt.legend(loc='upper left')
     plt.xlabel('x')
