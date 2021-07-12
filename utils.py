@@ -96,7 +96,27 @@ class system_dynamics():
         eq_b = dw_dt -  (self.epsilon + (self.mu_1*W)/(self.mu_2+V))*(-W -self.k*V*(V-self.b-1))
         return [eq_a, eq_b]
 
-    def pde_1D_2_cycle(self,x, y):
+    def pde_2D_heter(self, x, y):
+    
+        V, W, var = y[:, 0:1], y[:, 1:2], y[:, 2:3]
+        dv_dt = dde.grad.jacobian(y, x, i=0, j=2)
+        dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
+        dv_dyy = dde.grad.hessian(y, x, component=0, i=1, j=1)
+        dw_dt = dde.grad.jacobian(y, x, i=1, j=2)
+        dv_dx = dde.grad.jacobian(y, x, i=0, j=0)
+        dv_dy = dde.grad.jacobian(y, x, i=0, j=1)
+        
+        ## Heterogeneity prediction D_heter (to be transformed with another NN)
+        D_heter=tf.math.sigmoid(var)*0.08+0.02;
+        dD_dx = dde.grad.jacobian(D_heter, x, i=0, j=0)
+        dD_dy = dde.grad.jacobian(D_heter, x, i=0, j=1)
+        
+        ## Coupled PDE+ODE Equations
+        eq_a = dv_dt -  D_heter*(dv_dxx + dv_dyy) -dD_dx*dv_dx -dD_dy*dv_dy + self.k*V*(V-self.a)*(V-1) +W*V 
+        eq_b = dw_dt -  (self.epsilon + (self.mu_1*W)/(self.mu_2+V))*(-W -self.k*V*(V-self.b-1))
+        return [eq_a, eq_b]
+
+    def pde_1D_2cycle(self,x, y):
     
         V, W = y[:, 0:1], y[:, 1:2]
         dv_dt = dde.grad.jacobian(y, x, i=0, j=1)
@@ -118,8 +138,14 @@ class system_dynamics():
         eq_a = dv_dt -  self.D*dv_dxx + self.k*V*(V-self.a)*(V-1) +W*V -Istim
         eq_b = dw_dt -  (self.epsilon + (self.mu_1*W)/(self.mu_2+V))*(-W -self.k*V*(V-self.b-1))
         return [eq_a, eq_b]
-
+    
     def boundary_func_2d(self,x, on_boundary):
             return on_boundary and ~(x[0:2]==[self.min_x,self.min_y]).all() and  ~(x[0:2]==[self.min_x,self.max_y]).all() and ~(x[0:2]==[self.max_x,self.min_y]).all()  and  ~(x[0:2]==[self.max_x,self.max_y]).all() 
+   
+    def output_transform(self, x, y):                
+        D = tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(x[:,0:2], 32, tf.nn.tanh),
+                            32, tf.nn.tanh), 32, tf.nn.tanh), 32, tf.nn.tanh), 1,activation=None)        
+        return tf.concat((y[:,0:1],y[:,1:2],D), axis=1)    
+
    
     

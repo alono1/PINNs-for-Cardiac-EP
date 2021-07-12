@@ -1,8 +1,8 @@
-from sklearn.model_selection import train_test_split
 import sys
 import os         
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path)
+from sklearn.model_selection import train_test_split
 import argparse
 import numpy as np
 import deepxde as dde # version 0.11
@@ -18,6 +18,7 @@ if __name__ == "__main__":
     parser.add_argument('-w', '--w-input', dest='w_input', action='store_true', help='Add W to the model input data')
     parser.add_argument('-v', '--inverse', dest='inverse', required = False, type = str, help='Solve the inverse problem, specify variables to predict (e.g. a / ad / abd')
     parser.add_argument('-p', '--plot', dest='plot', required = False, action='store_true', help='Create and save plots')
+    parser.add_argument('-ht', '--heter', dest='heter', required = False, action='store_true', help='Predict heterogeneity')    
     args = parser.parse_args()
 
 ## Network Parameters
@@ -25,14 +26,14 @@ num_hidden_layers_1d = 4 # number of hidden layers for NN (1D)
 hidden_layer_size_1d = 32 # size of each hidden layers (1D)
 num_hidden_layers_2d = 4 # number of hidden layers for NN (2D)
 hidden_layer_size_2d = 32 # size of each hidden layers (2D)
-num_domain = 10000 # number of training points within the domain
+num_domain = 20000 # number of training points within the domain
 num_boundary = 1000 # number of training boundary condition points on the geometry boundary
 num_test = 1000 # number of testing points within the domain
 
 ## Training Parameters
-MAX_MODEL_INIT = 10 # maximum number of times allowed to initialize the model
-MAX_LOSS = 10 # upper limit to the initialized loss
-epochs = 50000 # number of epochs for training
+MAX_MODEL_INIT = 16 # maximum number of times allowed to initialize the model
+MAX_LOSS = 4 # upper limit to the initialized loss
+epochs = 60000 # number of epochs for training
 lr = 0.001 # learning rate
 noise = 0.1 # noise factor
 test_size = 0.9 # precentage of testing data
@@ -40,7 +41,7 @@ test_size = 0.9 # precentage of testing data
 
 def main(args):
     
-    ## Get utilities Class
+    ## Get Dynamics Class
     dynamics = utils.system_dynamics()
     params = dynamics.params_to_inverse(args.inverse)
     
@@ -71,7 +72,7 @@ def main(args):
     elif args.dim == 2:
         bc_a = dde.NeumannBC(geomtime, lambda x:  np.zeros((len(x), 1)), dynamics.boundary_func_2d, component=0)
     
-    # Model observed data
+    ## Model observed data
     observe_v = dde.PointSetBC(observe_train, v_train, component=0)
     input_data = [bc_a, ic_1, observe_v]
     ## If W required as input
@@ -79,15 +80,17 @@ def main(args):
         observe_w = dde.PointSetBC(observe_train, w_train, component=1)
         input_data = [bc_a, ic_1, observe_v, observe_w]
     
+    ## Select relevant PDE (Dim, Heterogeneity) and define the Network 
     if args.dim == 1:
-        ## Select relevant PDE
         pde = dynamics.pde_1D
-        ## Define the Network
+        # net = dde.maps.ResNet(2, 2, 32, 6, "tanh", kernel_initializer="Glorot uniform")
         net = dde.maps.FNN([2] + [hidden_layer_size_1d] * num_hidden_layers_1d + [2], "tanh", "Glorot uniform")
-    elif args.dim == 2:
-        ## Select relevant PDE
-        pde = dynamics.pde_2D
-        ## Define the Network
+    elif args.dim == 2 and args.heter:
+        pde = dynamics.pde_2D_heter    
+        net = dde.maps.FNN([3] + [hidden_layer_size_2d] * num_hidden_layers_2d + [3], "tanh", "Glorot uniform") 
+        net.apply_output_transform(dynamics.output_transform)
+    elif args.dim == 2 and not args.heter:
+        pde = dynamics.pde_2D    
         net = dde.maps.FNN([3] + [hidden_layer_size_2d] * num_hidden_layers_2d + [2], "tanh", "Glorot uniform") 
     data = dde.data.TimePDE(geomtime, pde, input_data,
                             num_domain = num_domain, 
@@ -99,16 +102,14 @@ def main(args):
 
     ## Stabalize initialization process
     losshistory, _ = model.train(epochs=1)
-    num_itr = len(losshistory.loss_train)
-    init_loss = max(losshistory.loss_train[num_itr-1])
+    init_loss = max(losshistory.loss_train[0])
     num_init = 0
     while init_loss>MAX_LOSS or np.isnan(init_loss):
         num_init += 1
         model = dde.Model(data, net)
         model.compile("adam", lr=lr)
         losshistory, _ = model.train(epochs=1)
-        num_itr = len(losshistory.loss_train)
-        init_loss = max(losshistory.loss_train[num_itr-1])
+        init_loss = max(losshistory.loss_train[0])
         if num_init > MAX_MODEL_INIT:
             raise ValueError('Model initialization phases exceeded the allowed limit')
             
@@ -120,14 +121,13 @@ def main(args):
         variables_file = "variables_" + args.inverse + ".dat"
         variable = dde.callbacks.VariableValue(params, period=1000, filename=variables_file)    
         losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
-    # dde.saveplot(losshistory, train_state, issave=True, isplot=True)
     
     ## Compute rMSE
     model_pred = model.predict(observe_test)
     v_pred = model_pred[:,0:1]
     rmse_v = np.sqrt(np.square(v_pred - v_test).mean())
     print('--------------------------')
-    print("V rMSE test:", rmse_v)
+    print("V rMSE for test data:", rmse_v)
     
     # Plot
     data_list = [observe_x, observe_train, V]
@@ -137,3 +137,6 @@ def main(args):
 
 ## Run main code
 train_state, v_pred, v_test = main(args)
+
+
+
