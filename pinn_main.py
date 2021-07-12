@@ -22,10 +22,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
 ## Network Parameters
+input_1d = 2 # network input size (1D)
 num_hidden_layers_1d = 4 # number of hidden layers for NN (1D)
 hidden_layer_size_1d = 32 # size of each hidden layers (1D)
+output_1d = 2 # network input size (1D)
+input_2d = 3 # network input size (2D)
 num_hidden_layers_2d = 4 # number of hidden layers for NN (2D)
 hidden_layer_size_2d = 32 # size of each hidden layers (2D)
+output_2d = 2 # network output size (2D)
+output_heter = 3 # network output size for heterogeneity case (2D)
 num_domain = 20000 # number of training points within the domain
 num_boundary = 1000 # number of training boundary condition points on the geometry boundary
 num_test = 1000 # number of testing points within the domain
@@ -38,11 +43,12 @@ lr = 0.001 # learning rate
 noise = 0.1 # noise factor
 test_size = 0.9 # precentage of testing data
 
-
 def main(args):
     
     ## Get Dynamics Class
     dynamics = utils.system_dynamics()
+    
+    ## Parameters to inverse (if needed)
     params = dynamics.params_to_inverse(args.inverse)
     
     ## Generate Data 
@@ -56,42 +62,32 @@ def main(args):
     if args.noise:
         v_train = v_train + noise*np.random.randn(v_train.shape[0], v_train.shape[1])
 
-    ## Define Initial Conditions
-    T_ic = observe_train[:,-1].reshape(-1,1)
-    idx_init = np.where(np.isclose(T_ic,1))[0]
-    V_init = v_train[idx_init]
-    observe_init = observe_train[idx_init]
-    ic_1 = dde.PointSetBC(observe_init,V_init,component=0)
-    
     ## Geometry and Time domains
     geomtime = dynamics.geometry_time(args.dim, observe_x)
-    
     ## Define Boundary Conditions
-    if args.dim == 1:
-        bc_a = dde.NeumannBC(geomtime, lambda x:  np.zeros((len(x), 1)), lambda _, on_boundary: on_boundary, component=0)
-    elif args.dim == 2:
-        bc_a = dde.NeumannBC(geomtime, lambda x:  np.zeros((len(x), 1)), dynamics.boundary_func_2d, component=0)
+    bc_1 = dynamics.BC_func(args.dim, geomtime)
+    ## Define Initial Conditions
+    ic_1 = dynamics.IC_func(observe_train, v_train)
     
     ## Model observed data
     observe_v = dde.PointSetBC(observe_train, v_train, component=0)
-    input_data = [bc_a, ic_1, observe_v]
-    ## If W required as input
-    if args.w_input:
+    input_data = [bc_1, ic_1, observe_v]
+    if args.w_input: ## If W required as input
         observe_w = dde.PointSetBC(observe_train, w_train, component=1)
-        input_data = [bc_a, ic_1, observe_v, observe_w]
+        input_data = [bc_1, ic_1, observe_v, observe_w]
     
     ## Select relevant PDE (Dim, Heterogeneity) and define the Network 
     if args.dim == 1:
         pde = dynamics.pde_1D
         # net = dde.maps.ResNet(2, 2, 32, 6, "tanh", kernel_initializer="Glorot uniform")
-        net = dde.maps.FNN([2] + [hidden_layer_size_1d] * num_hidden_layers_1d + [2], "tanh", "Glorot uniform")
+        net = dde.maps.FNN([input_1d] + [hidden_layer_size_1d] * num_hidden_layers_1d + [output_1d], "tanh", "Glorot uniform")
     elif args.dim == 2 and args.heter:
         pde = dynamics.pde_2D_heter    
-        net = dde.maps.FNN([3] + [hidden_layer_size_2d] * num_hidden_layers_2d + [3], "tanh", "Glorot uniform") 
-        net.apply_output_transform(dynamics.output_transform)
+        net = dde.maps.FNN([input_2d] + [hidden_layer_size_2d] * num_hidden_layers_2d + [output_heter], "tanh", "Glorot uniform") 
+        net.apply_output_transform(dynamics.output_trans_heter)
     elif args.dim == 2 and not args.heter:
         pde = dynamics.pde_2D    
-        net = dde.maps.FNN([3] + [hidden_layer_size_2d] * num_hidden_layers_2d + [2], "tanh", "Glorot uniform") 
+        net = dde.maps.FNN([input_2d] + [hidden_layer_size_2d] * num_hidden_layers_2d + [output_2d], "tanh", "Glorot uniform") 
     data = dde.data.TimePDE(geomtime, pde, input_data,
                             num_domain = num_domain, 
                             num_boundary=num_boundary, 
@@ -102,33 +98,34 @@ def main(args):
 
     ## Stabalize initialization process
     losshistory, _ = model.train(epochs=1)
-    init_loss = max(losshistory.loss_train[0])
+    initial_loss = max(losshistory.loss_train[0])
     num_init = 0
-    while init_loss>MAX_LOSS or np.isnan(init_loss):
+    while initial_loss>MAX_LOSS or np.isnan(initial_loss):
         num_init += 1
         model = dde.Model(data, net)
         model.compile("adam", lr=lr)
         losshistory, _ = model.train(epochs=1)
-        init_loss = max(losshistory.loss_train[0])
+        initial_loss = max(losshistory.loss_train[0])
         if num_init > MAX_MODEL_INIT:
             raise ValueError('Model initialization phases exceeded the allowed limit')
             
     ## Train Network
     out_path = dir_path + args.model_folder_name
-    if not args.inverse:
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path)
-    else:
+    if args.inverse:
         variables_file = "variables_" + args.inverse + ".dat"
         variable = dde.callbacks.VariableValue(params, period=1000, filename=variables_file)    
         losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
-    
+    else:
+        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path)
+        
     ## Compute rMSE
     model_pred = model.predict(observe_test)
     v_pred = model_pred[:,0:1]
     rmse_v = np.sqrt(np.square(v_pred - v_test).mean())
     print('--------------------------')
     print("V rMSE for test data:", rmse_v)
-    
+    print('--------------------------')
+    print("Arguments: ", args)
     # Plot
     data_list = [observe_x, observe_train, V]
     if args.plot and args.dim == 1:
@@ -137,6 +134,3 @@ def main(args):
 
 ## Run main code
 train_state, v_pred, v_test = main(args)
-
-
-
