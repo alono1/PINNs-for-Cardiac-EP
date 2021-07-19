@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 import argparse
 import numpy as np
 import deepxde as dde # version 0.11
-from create_plots import plot_1d
+from create_plots_1d import plot_1d
 import utils
 
 if __name__ == "__main__":
@@ -18,28 +18,30 @@ if __name__ == "__main__":
     parser.add_argument('-w', '--w-input', dest='w_input', action='store_true', help='Add W to the model input data')
     parser.add_argument('-v', '--inverse', dest='inverse', required = False, type = str, help='Solve the inverse problem, specify variables to predict (e.g. a / ad / abd')
     parser.add_argument('-p', '--plot', dest='plot', required = False, action='store_true', help='Create and save plots')
-    parser.add_argument('-ht', '--heter', dest='heter', required = False, action='store_true', help='Predict heterogeneity')    
+    parser.add_argument('-ht', '--heter', dest='heter', required = False, action='store_true', help='Predict heterogeneity - only in 2D')    
     args = parser.parse_args()
 
 ## Network Parameters
+# 1D
 input_1d = 2 # network input size (1D)
 num_hidden_layers_1d = 4 # number of hidden layers for NN (1D)
 hidden_layer_size_1d = 32 # size of each hidden layers (1D)
 output_1d = 2 # network input size (1D)
+# 2D
 input_2d = 3 # network input size (2D)
 num_hidden_layers_2d = 4 # number of hidden layers for NN (2D)
 hidden_layer_size_2d = 32 # size of each hidden layers (2D)
 output_2d = 2 # network output size (2D)
 output_heter = 3 # network output size for heterogeneity case (2D)
+
+## Training Parameters
 num_domain = 20000 # number of training points within the domain
 num_boundary = 1000 # number of training boundary condition points on the geometry boundary
 num_test = 1000 # number of testing points within the domain
-
-## Training Parameters
 MAX_MODEL_INIT = 16 # maximum number of times allowed to initialize the model
 MAX_LOSS = 4 # upper limit to the initialized loss
-epochs = 60000 # number of epochs for training
-lr = 0.001 # learning rate
+epochs = 50000 # number of epochs for training
+lr = 0.0005 # learning rate
 noise = 0.1 # noise factor
 test_size = 0.9 # precentage of testing data
 
@@ -63,7 +65,7 @@ def main(args):
         v_train = v_train + noise*np.random.randn(v_train.shape[0], v_train.shape[1])
 
     ## Geometry and Time domains
-    geomtime = dynamics.geometry_time(args.dim, observe_x)
+    geomtime = dynamics.geometry_time(args.dim)
     ## Define Boundary Conditions
     bc_1 = dynamics.BC_func(args.dim, geomtime)
     ## Define Initial Conditions
@@ -84,7 +86,7 @@ def main(args):
     elif args.dim == 2 and args.heter:
         pde = dynamics.pde_2D_heter    
         net = dde.maps.FNN([input_2d] + [hidden_layer_size_2d] * num_hidden_layers_2d + [output_heter], "tanh", "Glorot uniform") 
-        net.apply_output_transform(dynamics.output_trans_heter)
+        net.apply_output_transform(dynamics.modify_output_heter)
     elif args.dim == 2 and not args.heter:
         pde = dynamics.pde_2D    
         net = dde.maps.FNN([input_2d] + [hidden_layer_size_2d] * num_hidden_layers_2d + [output_2d], "tanh", "Glorot uniform") 
@@ -114,23 +116,24 @@ def main(args):
     if args.inverse:
         variables_file = "variables_" + args.inverse + ".dat"
         variable = dde.callbacks.VariableValue(params, period=1000, filename=variables_file)    
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
+        losshistory, train_state = model.train(epochs=epochs-1, model_save_path = out_path, callbacks=[variable])
     else:
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path)
+        losshistory, train_state = model.train(epochs=epochs-1, model_save_path = out_path)
         
     ## Compute rMSE
     model_pred = model.predict(observe_test)
-    v_pred = model_pred[:,0:1]
+    v_pred = model_pred[:,0:1]   
     rmse_v = np.sqrt(np.square(v_pred - v_test).mean())
     print('--------------------------')
     print("V rMSE for test data:", rmse_v)
     print('--------------------------')
     print("Arguments: ", args)
+    
     # Plot
-    data_list = [observe_x, observe_train, V]
+    data_list = [observe_x, observe_train, v_train, V]
     if args.plot and args.dim == 1:
-        plot_1d(data_list, model, args.model_folder_name)
-    return train_state, v_pred, v_test 
+        plot_1d(data_list,dynamics, model, args.model_folder_name)
+    return model
 
 ## Run main code
-train_state, v_pred, v_test = main(args)
+model = main(args)
