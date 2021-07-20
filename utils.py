@@ -43,7 +43,7 @@ class system_dynamics():
             return np.hstack((X, T)), V, W
         return np.hstack((X, Y, T)), V, W
 
-    def geometry_time(self, dim, observe_x):
+    def geometry_time(self, dim):
         if dim == 1:
             geom = dde.geometry.Interval(self.min_x, 2*self.max_x)
             timedomain = dde.geometry.TimeDomain(self.min_t, self.max_t)
