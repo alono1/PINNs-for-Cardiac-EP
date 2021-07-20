@@ -42,25 +42,6 @@ class system_dynamics():
         if dim == 1:     
             return np.hstack((X, T)), V, W
         return np.hstack((X, Y, T)), V, W
-    
-    def generate_exper_data(self, file_name, dim):
-        data = h5py.File(file_name, 'r')
-        if dim == 1:
-            t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
-            X, T = np.meshgrid(x, t)
-        elif dim == 2:
-            t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"], data["Vsav"], data["Wsav"]
-            X, T, Y = np.meshgrid(x,t,y)
-            Y = Y.reshape(-1, 1)
-        else:
-            raise ValueError('Dimesion value argument has to be either 1 or 2')
-        X = X.reshape(-1, 1)
-        T = T.reshape(-1, 1)
-        V = Vsav.reshape(-1, 1)
-        W = Wsav.reshape(-1, 1)    
-        if dim == 1:     
-            return np.hstack((X, T)), V, W
-        return np.hstack((X, Y, T)), V, W
 
     def geometry_time(self, dim, observe_x):
         if dim == 1:
