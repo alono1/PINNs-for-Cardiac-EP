@@ -42,6 +42,11 @@ def plot_1D_cell(data_list, dynamics, model, fig_name):
     plt.ylabel('V')
     plt.ylim((-0.2,1))
     
+    
+    # plt.plot([], [], ' ', label="b_RT=0.15")
+    # plt.plot([], [], ' ', label="b_predicted")
+       
+    
     ## save figure
     png1 = io.BytesIO()
     plt.savefig(png1, format="png", dpi=500, pad_inches = .1, bbox_inches = 'tight')

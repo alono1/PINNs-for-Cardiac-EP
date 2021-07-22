@@ -6,8 +6,8 @@ from sklearn.model_selection import train_test_split
 import argparse
 import numpy as np
 import deepxde as dde # version 0.11 or higher
-from create_plots_1d import plot_1D
-from create_plots_2d import plot_2D
+from generate_plots_1d import plot_1D
+from generate_plots_2d import plot_2D
 import utils
 
 if __name__ == "__main__":
@@ -41,7 +41,7 @@ num_boundary = 1000 # number of training boundary condition points on the geomet
 num_test = 1000 # number of testing points within the domain
 MAX_MODEL_INIT = 16 # maximum number of times allowed to initialize the model
 MAX_LOSS = 4 # upper limit to the initialized loss
-epochs = 50000 # number of epochs for training
+epochs = 100 # number of epochs for training
 lr = 0.0005 # learning rate
 noise = 0.1 # noise factor
 test_size = 0.9 # precentage of testing data
