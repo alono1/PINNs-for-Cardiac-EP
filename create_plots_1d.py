@@ -3,31 +3,30 @@ import numpy as np
 from PIL import Image
 import io
 
-def plot_1d(data_list,dynamics, model, fig_name):
+def plot_1D(data_list,dynamics, model, fig_name):
 
-    plot_1d_cell(data_list, model, fig_name[1:])
-    plot_1d_array(data_list, model, fig_name[1:])
-    plot_1d_grid(dynamics, model, fig_name[1:])
-    
+    plot_1D_cell(data_list, dynamics, model, fig_name[1:])
+    plot_1D_array(data_list, dynamics, model, fig_name[1:])
+    plot_1D_grid(dynamics, model, fig_name[1:])
     return 0
     
-def plot_1d_cell(data_list, model, fig_name):
+def plot_1D_cell(data_list, dynamics, model, fig_name):
     
     ## Unpack data
     observe_x, observe_train, v_train, v = data_list[0], data_list[1], data_list[2], data_list[3]
     
-    ## Pick a random cell to show
-    obs_x = 15.0
+    ## Pick a cell to show
+    cell = dynamics.max_x*0.75
     
     ## Get data for cell
-    idx = [i for i,ix in enumerate(observe_x) if observe_x[i][0]==obs_x]
+    idx = [i for i,ix in enumerate(observe_x) if observe_x[i][0]==cell]
     observe_geomtime = observe_x[idx]
     v_GT = v[idx]
     v_predict = model.predict(observe_geomtime)[:,0:1]
     t_axis = observe_geomtime[:,1]
     
     ## Get data for points used in training process
-    idx_train = [i for i,ix in enumerate(observe_train) if observe_train[i][0]==obs_x]
+    idx_train = [i for i,ix in enumerate(observe_train) if observe_train[i][0]==cell]
     v_trained_points = v_train[idx_train]
     t_markers = (observe_train[idx_train])[:,1]
     
@@ -41,23 +40,23 @@ def plot_1d_cell(data_list, model, fig_name):
     plt.legend(loc='upper right')
     plt.xlabel('t')
     plt.ylabel('V')
-    # plt.show()
+    plt.ylim((-0.2,1))
     
     ## save figure
     png1 = io.BytesIO()
     plt.savefig(png1, format="png", dpi=500, pad_inches = .1, bbox_inches = 'tight')
     png2 = Image.open(png1)
-    png2.save(fig_name + "_cell_plot.tiff")
+    png2.save(fig_name + "_cell_plot_1D.tiff")
     png1.close()
     return 0
 
-def plot_1d_array(data_list, model, fig_name):
+def plot_1D_array(data_list, dynamics, model, fig_name):
     
     ## Unpack data
     observe_x, observe_train, v_train, v = data_list[0], data_list[1], data_list[2], data_list[3]
     
     ## Pick a random point in time to show
-    obs_t = 36.0
+    obs_t = dynamics.max_t/2
     
     ## Get all array data for chosen time 
     idx = [i for i,ix in enumerate(observe_x) if observe_x[i][1]==obs_t]
@@ -81,22 +80,22 @@ def plot_1d_array(data_list, model, fig_name):
     plt.legend(loc='upper left')
     plt.xlabel('x')
     plt.ylabel('V')
-    # plt.show()
+    plt.ylim((-0.2,1))
     
     ## save figure
     png1 = io.BytesIO()
     plt.savefig(png1, format="png", dpi=500, pad_inches = .1, bbox_inches = 'tight')
     png2 = Image.open(png1)
-    png2.save(fig_name + "_array_plot.tiff")
+    png2.save(fig_name + "_array_plot_1D.tiff")
     png1.close()
     return 0
 
-def plot_1d_grid(dynamics, model, fig_name):
+def plot_1D_grid(dynamics, model, fig_name):
     
     grid_size = 200
     
     ## Get data
-    x = np.linspace(dynamics.min_x,dynamics.max_x*2, grid_size)
+    x = np.linspace(dynamics.min_x,dynamics.max_x, grid_size)
     t = np.linspace(dynamics.min_t,dynamics.max_t,grid_size)
     X, T = np.meshgrid(x,t)
     X_data = X.reshape(-1,1)
@@ -109,9 +108,9 @@ def plot_1d_grid(dynamics, model, fig_name):
     
     ## create figure
     plt.figure()
-    contour = plt.contourf(X,T,Z, cmap=plt.cm.bone)
-    plt.xlabel('x')
-    plt.ylabel('t')
+    contour = plt.contourf(T,X,Z, cmap=plt.cm.bone)
+    plt.xlabel('t')
+    plt.ylabel('x')
     cbar = plt.colorbar(contour)
     cbar.ax.set_ylabel('V')
     
@@ -119,6 +118,6 @@ def plot_1d_grid(dynamics, model, fig_name):
     png1 = io.BytesIO()
     plt.savefig(png1, format="png", dpi=500, pad_inches = .1, bbox_inches = 'tight')
     png2 = Image.open(png1)
-    png2.save(fig_name + "_grid_plot.tiff")
+    png2.save(fig_name + "_grid_plot_1D.tiff")
     png1.close()
     return 0

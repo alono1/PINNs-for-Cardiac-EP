@@ -7,6 +7,7 @@ import h5py
 class system_dynamics():
     
     def __init__(self):
+        
         ## PDE Parameters
         self.a = 0.01
         self.b = 0.15
@@ -23,9 +24,33 @@ class system_dynamics():
         self.max_y = 10
         self.min_t = 1
         self.max_t = 70
+        self.spacing = 0.1
 
     def generate_data(self, file_name, dim):
+        
         data = scipy.io.loadmat(file_name)
+        if dim == 1:
+            t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
+            X, T = np.meshgrid(x, t)
+        elif dim == 2:
+            t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"], data["Vsav"], data["Wsav"]
+            X, T, Y = np.meshgrid(x,t,y)
+            Y = Y.reshape(-1, 1)
+        else:
+            raise ValueError('Dimesion value argument has to be either 1 or 2')
+        self.max_t = np.max(t)
+        self.max_x = np.max(x)
+        X = X.reshape(-1, 1)
+        T = T.reshape(-1, 1)
+        V = Vsav.reshape(-1, 1)
+        W = Wsav.reshape(-1, 1)    
+        if dim == 1:     
+            return np.hstack((X, T)), V, W
+        return np.hstack((X, Y, T)), V, W
+    
+    def generate_exper_data(self, file_name, dim):
+        
+        data = h5py.File(file_name, 'r')
         if dim == 1:
             t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
             X, T = np.meshgrid(x, t)
@@ -45,7 +70,7 @@ class system_dynamics():
 
     def geometry_time(self, dim):
         if dim == 1:
-            geom = dde.geometry.Interval(self.min_x, 2*self.max_x)
+            geom = dde.geometry.Interval(self.min_x, self.max_x)
             timedomain = dde.geometry.TimeDomain(self.min_t, self.max_t)
             geomtime = dde.geometry.GeometryXTime(geom, timedomain)    
         elif dim == 2:
@@ -57,6 +82,7 @@ class system_dynamics():
         return geomtime
 
     def params_to_inverse(self,args_param):
+        
         params = []
         if not args_param:
             return self.a, self.b, self.D, params
@@ -94,7 +120,7 @@ class system_dynamics():
         x_space,t_space = x[:, 0:1],x[:, 1:2]
         t_stim_1 = tf.equal(t_space, 0)
         t_stim_2 = tf.equal(t_space, int(self.max_t/2))
-        x_stim = tf.less_equal(x_space, 5*0.1)
+        x_stim = tf.less_equal(x_space, 5*self.spacing)
     
         first_cond_stim = tf.logical_and(t_stim_1, x_stim)
         second_cond_stim = tf.logical_and(t_stim_2, x_stim)
@@ -129,7 +155,7 @@ class system_dynamics():
         dv_dx = dde.grad.jacobian(y, x, i=0, j=0)
         dv_dy = dde.grad.jacobian(y, x, i=0, j=1)
         
-        ## Heterogeneity prediction D_heter (to be transformed with another NN)
+        ## Heterogeneity
         D_heter = tf.math.sigmoid(var)*0.08+0.02;
         dD_dx = dde.grad.jacobian(D_heter, x, i=0, j=0)
         dD_dy = dde.grad.jacobian(D_heter, x, i=0, j=1)
@@ -157,10 +183,8 @@ class system_dynamics():
     def boundary_func_2d(self,x, on_boundary):
             return on_boundary and ~(x[0:2]==[self.min_x,self.min_y]).all() and  ~(x[0:2]==[self.min_x,self.max_y]).all() and ~(x[0:2]==[self.max_x,self.min_y]).all()  and  ~(x[0:2]==[self.max_x,self.max_y]).all() 
    
-    def output_trans_heter(self, x, y):                
+    def modify_output_heter(self, x, y):                
         domain_space = x[:,0:2]
         D = tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(domain_space, 32,
                             tf.nn.tanh), 32, tf.nn.tanh), 32, tf.nn.tanh), 32, tf.nn.tanh), 1, activation=None)        
         return tf.concat((y[:,0:1],y[:,1:2],D), axis=1)    
-
-    
