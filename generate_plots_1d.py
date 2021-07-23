@@ -40,12 +40,7 @@ def plot_1D_cell(data_list, dynamics, model, fig_name):
     plt.legend(loc='upper right')
     plt.xlabel('t')
     plt.ylabel('V')
-    plt.ylim((-0.2,1))
-    
-    
-    # plt.plot([], [], ' ', label="b_RT=0.15")
-    # plt.plot([], [], ' ', label="b_predicted")
-       
+    plt.ylim((-0.2,1.2))
     
     ## save figure
     png1 = io.BytesIO()
@@ -60,7 +55,7 @@ def plot_1D_array(data_list, dynamics, model, fig_name):
     ## Unpack data
     observe_x, observe_train, v_train, v = data_list[0], data_list[1], data_list[2], data_list[3]
     
-    ## Pick a random point in time to show
+    ## Pick a point in time to show
     obs_t = dynamics.max_t/2
     
     ## Get all array data for chosen time 
@@ -85,7 +80,7 @@ def plot_1D_array(data_list, dynamics, model, fig_name):
     plt.legend(loc='upper left')
     plt.xlabel('x')
     plt.ylabel('V')
-    plt.ylim((-0.2,1))
+    plt.ylim((-0.2,1.2))
     
     ## save figure
     png1 = io.BytesIO()
@@ -109,7 +104,7 @@ def plot_1D_grid(dynamics, model, fig_name):
     v_pred = model.predict(data)[:,0:1]
     Z = np.zeros((grid_size,grid_size))
     for i in range(grid_size):
-        Z[:,i] = (v_pred[(i*200):((i+1)*grid_size)]).reshape(-1)
+        Z[i,:] = (v_pred[(i*grid_size):((i+1)*grid_size)]).reshape(-1)
     
     ## create figure
     plt.figure()
