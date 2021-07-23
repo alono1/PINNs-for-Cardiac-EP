@@ -44,7 +44,6 @@ def plot_2D_cell(data_list, dynamics, model, fig_name):
     plt.legend(loc='upper right')
     plt.xlabel('t')
     plt.ylabel('V')
-    # plt.show()
     
     ## save figure
     png1 = io.BytesIO()
@@ -119,17 +118,17 @@ def generate_2D_animation(dynamics, model, fig_name):
     ## Create base screen
     fig = pylab.figure()
     ax = pylab.axes(xlim=(dynamics.min_x, dynamics.max_x), ylim=(dynamics.min_y, dynamics.max_y), xlabel='x', ylabel='y')
-    cvals = np.linspace(0,1,n_frames+1)
-    cont = pylab.contourf(X, Y, Z_0, cvals,cmap=plt.cm.bone)    
+    levels = np.arange(0,1.15,0.1) 
+    contour = pylab.contourf(X, Y, Z_0, levels = levels, cmap=plt.cm.bone)
     cbar = pylab.colorbar()
     cbar.ax.set_ylabel('V')
     
     def animate(i):
         ## create a frame
         Z = get_animation_data(i)
-        cont = pylab.contourf(X, Y, Z, cvals,cmap=plt.cm.bone)
-        plt.title('t = %.2f' %((nT/n_frames)*(i+1)))
-        return cont
+        contour = pylab.contourf(X, Y, Z, cmap=plt.cm.bone)
+        plt.title('t = %.1f' %((nT/n_frames)*(i+1)))
+        return contour
     
     anim = animation.FuncAnimation(fig, animate, frames=n_frames, repeat=False)
     anim.save(fig_name+'_2D_Animation.mp4', writer=animation.FFMpegWriter(fps=10))
