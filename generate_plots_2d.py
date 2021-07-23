@@ -56,7 +56,7 @@ def plot_2D_cell(data_list, dynamics, model, fig_name):
 def plot_2D_grid(data_list,dynamics, model, fig_name):
     
     grid_size = 200
-    rand_t = 36
+    rand_t = dynamics.max_t/2
     
     ## Get data
     x = np.linspace(dynamics.min_x,dynamics.max_x, grid_size)
