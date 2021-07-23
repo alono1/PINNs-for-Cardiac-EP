@@ -41,7 +41,7 @@ num_boundary = 1000 # number of training boundary condition points on the geomet
 num_test = 1000 # number of testing points within the domain
 MAX_MODEL_INIT = 16 # maximum number of times allowed to initialize the model
 MAX_LOSS = 4 # upper limit to the initialized loss
-epochs = 100 # number of epochs for training
+epochs = 60000 # number of epochs for training
 lr = 0.0005 # learning rate
 noise = 0.1 # noise factor
 test_size = 0.9 # precentage of testing data
@@ -68,16 +68,16 @@ def main(args):
     ## Geometry and Time domains
     geomtime = dynamics.geometry_time(args.dim)
     ## Define Boundary Conditions
-    bc_1 = dynamics.BC_func(args.dim, geomtime)
+    bc = dynamics.BC_func(args.dim, geomtime)
     ## Define Initial Conditions
-    ic_1 = dynamics.IC_func(observe_train, v_train)
+    ic = dynamics.IC_func(observe_train, v_train)
     
     ## Model observed data
     observe_v = dde.PointSetBC(observe_train, v_train, component=0)
-    input_data = [bc_1, ic_1, observe_v]
+    input_data = [bc, ic, observe_v]
     if args.w_input: ## If W required as an input
         observe_w = dde.PointSetBC(observe_train, w_train, component=1)
-        input_data = [bc_1, ic_1, observe_v, observe_w]
+        input_data = [bc, ic, observe_v, observe_w]
     
     ## Select relevant PDE (Dim, Heterogeneity) and define the Network 
     if args.dim == 1:
@@ -96,8 +96,10 @@ def main(args):
                             anchors=observe_train,
                             num_test=num_test)    
     model = dde.Model(pde_data, net)
-    model.compile("adam", lr=lr)
-    # model.compile("adam", lr=lr, loss_weights=[2,2,1,1,1])
+    loss_weights = [1]*(len(input_data)+2)
+    loss_weights[0:2] = (1.5,1.5)
+    # model.compile("adam", lr=lr)
+    model.compile("adam", lr=lr, loss_weights=loss_weights)
 
     ## Stabalize initialization process by capping the losses
     losshistory, _ = model.train(epochs=1)
@@ -106,8 +108,8 @@ def main(args):
     while initial_loss>MAX_LOSS or np.isnan(initial_loss):
         num_init += 1
         model = dde.Model(pde_data, net)
-        model.compile("adam", lr=lr)
-        # model.compile("adam", lr=lr, loss_weights=[2,2,1,1,1])
+        # model.compile("adam", lr=lr)
+        model.compile("adam", lr=lr, loss_weights=loss_weights)
         losshistory, _ = model.train(epochs=1)
         initial_loss = max(losshistory.loss_train[0])
         if num_init > MAX_MODEL_INIT:
@@ -135,8 +137,7 @@ def main(args):
     if args.plot and args.dim == 1:
         plot_1D(data_list,dynamics, model, args.model_folder_name)
     elif args.plot and args.dim == 2:
-        plot_2D(data_list,dynamics, model, args.animation, args.model_folder_name)
-        
+        plot_2D(data_list,dynamics, model, args.animation, args.model_folder_name)   
     return model
 
 ## Run main code

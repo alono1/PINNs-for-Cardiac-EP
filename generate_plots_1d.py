@@ -37,7 +37,7 @@ def plot_1D_cell(data_list, dynamics, model, fig_name):
     # If there are any trained data points for the current cell 
     if len(t_markers):
         plt.scatter(t_markers, v_trained_points, marker='x', c='black',s=6, label='Observed')
-    plt.legend(loc='upper right')
+    plt.legend(loc='upper left')
     plt.xlabel('t')
     plt.ylabel('V')
     plt.ylim((-0.2,1.2))
@@ -108,7 +108,7 @@ def plot_1D_grid(dynamics, model, fig_name):
     
     ## create figure
     plt.figure()
-    contour = plt.contourf(T,X,Z, cmap=plt.cm.bone)
+    contour = plt.contourf(T,X,Z, levels = np.arange(-0.15,1.06,0.15) , cmap=plt.cm.bone)
     plt.xlabel('t')
     plt.ylabel('x')
     cbar = plt.colorbar(contour)
