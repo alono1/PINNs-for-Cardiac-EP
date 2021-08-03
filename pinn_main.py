@@ -96,10 +96,7 @@ def main(args):
                             anchors=observe_train,
                             num_test=num_test)    
     model = dde.Model(pde_data, net)
-    loss_weights = [1]*(len(input_data)+2)
-    loss_weights[0:2] = (1.5,1.5)
-    # model.compile("adam", lr=lr)
-    model.compile("adam", lr=lr, loss_weights=loss_weights)
+    model.compile("adam", lr=lr)
 
     ## Stabalize initialization process by capping the losses
     losshistory, _ = model.train(epochs=1)
@@ -108,8 +105,7 @@ def main(args):
     while initial_loss>MAX_LOSS or np.isnan(initial_loss):
         num_init += 1
         model = dde.Model(pde_data, net)
-        # model.compile("adam", lr=lr)
-        model.compile("adam", lr=lr, loss_weights=loss_weights)
+        model.compile("adam", lr=lr)
         losshistory, _ = model.train(epochs=1)
         initial_loss = max(losshistory.loss_train[0])
         if num_init > MAX_MODEL_INIT:
