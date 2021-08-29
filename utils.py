@@ -1,8 +1,7 @@
 import scipy.io
-import deepxde as dde # version 0.11
+import deepxde as dde
 from deepxde.backend import tf
 import numpy as np
-import h5py
 
 class system_dynamics():
     
@@ -40,26 +39,6 @@ class system_dynamics():
             raise ValueError('Dimesion value argument has to be either 1 or 2')
         self.max_t = np.max(t)
         self.max_x = np.max(x)
-        X = X.reshape(-1, 1)
-        T = T.reshape(-1, 1)
-        V = Vsav.reshape(-1, 1)
-        W = Wsav.reshape(-1, 1)    
-        if dim == 1:     
-            return np.hstack((X, T)), V, W
-        return np.hstack((X, Y, T)), V, W
-    
-    def generate_exper_data(self, file_name, dim):
-        
-        data = h5py.File(file_name, 'r')
-        if dim == 1:
-            t, x, Vsav, Wsav = data["t"], data["x"], data["Vsav"], data["Wsav"]
-            X, T = np.meshgrid(x, t)
-        elif dim == 2:
-            t, x, y, Vsav, Wsav = data["t"], data["x"], data["y"], data["Vsav"], data["Wsav"]
-            X, T, Y = np.meshgrid(x,t,y)
-            Y = Y.reshape(-1, 1)
-        else:
-            raise ValueError('Dimesion value argument has to be either 1 or 2')
         X = X.reshape(-1, 1)
         T = T.reshape(-1, 1)
         V = Vsav.reshape(-1, 1)
@@ -165,6 +144,25 @@ class system_dynamics():
         eq_b = dw_dt -  (self.epsilon + (self.mu_1*W)/(self.mu_2+V))*(-W -self.k*V*(V-self.b-1))
         return [eq_a, eq_b]
  
+    def pde_2D_heter_forward(self, x, y):
+                
+        V, W, D = y[:, 0:1], y[:, 1:2], y[:, 2:3]
+        dv_dt = dde.grad.jacobian(y, x, i=0, j=2)
+        dv_dxx = dde.grad.hessian(y, x, component=0, i=0, j=0)
+        dv_dyy = dde.grad.hessian(y, x, component=0, i=1, j=1)
+        dw_dt = dde.grad.jacobian(y, x, i=1, j=2)
+        dv_dx = dde.grad.jacobian(y, x, i=0, j=0)
+        dv_dy = dde.grad.jacobian(y, x, i=0, j=1)
+        
+        ## Heterogeneity
+        dD_dx = dde.grad.jacobian(D, x, i=0, j=0)
+        dD_dy = dde.grad.jacobian(D, x, i=0, j=1)
+        
+        ## Coupled PDE+ODE Equations
+        eq_a = dv_dt -  D*(dv_dxx + dv_dyy) -dD_dx*dv_dx -dD_dy*dv_dy + self.k*V*(V-self.a)*(V-1) +W*V 
+        eq_b = dw_dt -  (self.epsilon + (self.mu_1*W)/(self.mu_2+V))*(-W -self.k*V*(V-self.b-1))
+        return [eq_a, eq_b]   
+ 
     def IC_func(self,observe_train, v_train):
         
         T_ic = observe_train[:,-1].reshape(-1,1)
@@ -183,8 +181,26 @@ class system_dynamics():
     def boundary_func_2d(self,x, on_boundary):
             return on_boundary and ~(x[0:2]==[self.min_x,self.min_y]).all() and  ~(x[0:2]==[self.min_x,self.max_y]).all() and ~(x[0:2]==[self.max_x,self.min_y]).all()  and  ~(x[0:2]==[self.max_x,self.max_y]).all() 
    
-    def modify_output_heter(self, x, y):                
+    def modify_inv_heter(self, x, y):                
         domain_space = x[:,0:2]
-        D = tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(domain_space, 32,
-                            tf.nn.tanh), 32, tf.nn.tanh), 32, tf.nn.tanh), 32, tf.nn.tanh), 1, activation=None)        
-        return tf.concat((y[:,0:1],y[:,1:2],D), axis=1)    
+        D = tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(tf.layers.dense(domain_space, 60,
+                            tf.nn.tanh), 60, tf.nn.tanh), 60, tf.nn.tanh), 60, tf.nn.tanh), 60, tf.nn.tanh), 1, activation=None)        
+        return tf.concat((y[:,0:2],D), axis=1)    
+    
+    def modify_heter(self, x, y):
+        
+        x_space, y_space = x[:, 0:1], x[:, 1:2]
+        
+        x_upper = tf.less_equal(x_space, 54*0.1)
+        x_lower = tf.greater(x_space,32*0.1)
+        cond_1 = tf.logical_and(x_upper, x_lower)
+        
+        y_upper = tf.less_equal(y_space, 54*0.1)
+        y_lower = tf.greater(y_space,32*0.1)
+        cond_2 = tf.logical_and(y_upper, y_lower)
+        
+        D0 = tf.ones_like(x_space)*0.02 
+        D1 = tf.ones_like(x_space)*0.1
+        D = tf.where(tf.logical_and(cond_1, cond_2),D0,D1)
+        return tf.concat((y[:,0:2],D), axis=1)
+

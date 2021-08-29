@@ -9,6 +9,7 @@ import deepxde as dde # version 0.11 or higher
 from generate_plots_1d import plot_1D
 from generate_plots_2d import plot_2D
 import utils
+import pinn
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -23,26 +24,7 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--animation', dest='animation', required = False, action='store_true', help='Create and save 2D Animation')
     args = parser.parse_args()
 
-## Network Parameters
-# 1D
-input_1d = 2 # network input size (1D)
-num_hidden_layers_1d = 4 # number of hidden layers for NN (1D)
-hidden_layer_size_1d = 32 # size of each hidden layers (1D)
-output_1d = 2 # network input size (1D)
-# 2D
-input_2d = 3 # network input size (2D)
-num_hidden_layers_2d = 4 # number of hidden layers for NN (2D)
-hidden_layer_size_2d = 32 # size of each hidden layers (2D)
-output_2d = 2 # network output size (2D)
-output_heter = 3 # network output size for heterogeneity case (2D)
-## Training Parameters
-num_domain = 20000 # number of training points within the domain
-num_boundary = 1000 # number of training boundary condition points on the geometry boundary
-num_test = 1000 # number of testing points within the domain
-MAX_MODEL_INIT = 16 # maximum number of times allowed to initialize the model
-MAX_LOSS = 4 # upper limit to the initialized loss
-epochs = 60000 # number of epochs for training
-lr = 0.0005 # learning rate
+## General Params
 noise = 0.1 # noise factor
 test_size = 0.9 # precentage of testing data
 
@@ -79,56 +61,28 @@ def main(args):
         observe_w = dde.PointSetBC(observe_train, w_train, component=1)
         input_data = [bc, ic, observe_v, observe_w]
     
-    ## Select relevant PDE (Dim, Heterogeneity) and define the Network 
-    if args.dim == 1:
-        pde = dynamics.pde_1D
-        net = dde.maps.FNN([input_1d] + [hidden_layer_size_1d] * num_hidden_layers_1d + [output_1d], "tanh", "Glorot uniform")
-    elif args.dim == 2 and args.heter:
-        pde = dynamics.pde_2D_heter    
-        net = dde.maps.FNN([input_2d] + [hidden_layer_size_2d] * num_hidden_layers_2d + [output_heter], "tanh", "Glorot uniform") 
-        net.apply_output_transform(dynamics.modify_output_heter)
-    elif args.dim == 2 and not args.heter:
-        pde = dynamics.pde_2D    
-        net = dde.maps.FNN([input_2d] + [hidden_layer_size_2d] * num_hidden_layers_2d + [output_2d], "tanh", "Glorot uniform") 
-    pde_data = dde.data.TimePDE(geomtime, pde, input_data,
-                            num_domain = num_domain, 
-                            num_boundary=num_boundary, 
-                            anchors=observe_train,
-                            num_test=num_test)    
-    model = dde.Model(pde_data, net)
-    model.compile("adam", lr=lr)
-
-    ## Stabalize initialization process by capping the losses
-    losshistory, _ = model.train(epochs=1)
-    initial_loss = max(losshistory.loss_train[0])
-    num_init = 0
-    while initial_loss>MAX_LOSS or np.isnan(initial_loss):
-        num_init += 1
-        model = dde.Model(pde_data, net)
-        model.compile("adam", lr=lr)
-        losshistory, _ = model.train(epochs=1)
-        initial_loss = max(losshistory.loss_train[0])
-        if num_init > MAX_MODEL_INIT:
-            raise ValueError('Model initialization phase exceeded the allowed limit')
+    ## Select relevant PDE (Dim, Heterogeneity) and define the Network
+    model_pinn = pinn.PINN(dynamics, args.dim,args.heter, args.inverse)
+    model_pinn.define_pinn(geomtime, input_data, observe_train)
             
     ## Train Network
     out_path = dir_path + args.model_folder_name
-    if args.inverse:
-        variables_file = "variables_" + args.inverse + ".dat"
-        variable = dde.callbacks.VariableValue(params, period=1000, filename=variables_file)    
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path, callbacks=[variable])
-    else:
-        losshistory, train_state = model.train(epochs=epochs, model_save_path = out_path)
-        
+    model, losshistory, train_state = model_pinn.train(out_path, params)
+    
     ## Compute rMSE
-    v_pred = model.predict(observe_test)[:,0:1]   
+    pred = model.predict(observe_test)   
+    v_pred, w_pred = pred[:,0:1], pred[:,1:2]
     rmse_v = np.sqrt(np.square(v_pred - v_test).mean())
     print('--------------------------')
     print("V rMSE for test data:", rmse_v)
     print('--------------------------')
     print("Arguments: ", args)
     
-    # Plot
+    ## Save predictions, data
+    np.savetxt("train_data.dat", np.hstack((observe_train, v_train, w_train)),header="observe_train,v_train, w_train")
+    np.savetxt("test_pred_data.dat", np.hstack((observe_test, v_test,v_pred, w_test, w_pred)),header="observe_test,v_test, v_pred, w_test, w_pred")
+    
+    ## Generate Figures
     data_list = [observe_x, observe_train, v_train, V]
     if args.plot and args.dim == 1:
         plot_1D(data_list,dynamics, model, args.model_folder_name)
