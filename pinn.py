@@ -24,7 +24,7 @@ class PINN():
         self.MAX_MODEL_INIT = 16 # maximum number of times allowed to initialize the model
         self.MAX_LOSS = 4 # upper limit to the initialized loss
         self.epochs_init = 15000 # number of epochs for training initial phase
-        self.epochs_main = 60000 # number of epochs for main training phase
+        self.epochs_main = 1000 # number of epochs for main training phase
         self.lr = 0.0005 # learning rate
         
         ## Update constants for 2D and/or heterogeneity geometry
@@ -53,11 +53,12 @@ class PINN():
         if self.dim == 1:
             pde = self.dynamics.pde_1D
         elif self.dim == 2 and self.heter:
-            if 'd' in self.inverse:
+            if self.inverse and 'd' in self.inverse:
                 pde = self.dynamics.pde_2D_heter
                 self.net.apply_output_transform(self.dynamics.modify_inv_heter)
             else:
                 pde = self.dynamics.pde_2D_heter_forward
+                self.net.apply_output_transform(self.dynamics.modify_heter)
         elif self.dim == 2 and not self.heter:
             pde = self.dynamics.pde_2D     
         
